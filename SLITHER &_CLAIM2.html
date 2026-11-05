@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Territory Snake 3D</title>
+  <!-- Dynamic Favicon SVG -->
+  <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23030712'/><path d='M25,75 Q25,35 50,35 T75,25' fill='none' stroke='%2306b6d4' stroke-width='16' stroke-linecap='round'/><circle cx='75' cy='25' r='12' fill='%2306b6d4'/><circle cx='80' cy='22' r='3' fill='%23ffffff'/><circle cx='72' cy='20' r='3' fill='%23ffffff'/></svg>">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- PeerJS CDN for Online Multiplayer -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Outfit', sans-serif;
+      box-sizing: border-box;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #030712;
+      touch-action: none;
+    }
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    canvas#game-canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+      touch-action: none;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    }
+    .glow-text {
+      text-shadow: 0 0 25px rgba(6, 182, 212, 0.8);
+    }
+  </style>
+</head>
+<body class="relative text-white select-none">
+
+  <!-- Canvas Container -->
+  <div id="canvas-container">
+    <canvas id="game-canvas"></canvas>
+  </div>
+
+  <!-- HUD Overlay -->
+  <div id="hud" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 sm:p-6 hidden z-10">
+    <!-- Top Bar -->
+    <div class="flex justify-between items-start w-full gap-4">
+      <!-- Player Info & Stats -->
+      <div class="glass-panel p-4 rounded-2xl flex items-center gap-4 border-l-4 border-cyan-400 pointer-events-auto">
+        <div>
+          <div class="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-bold">Territory</div>
+          <div id="player-percent" class="text-2xl sm:text-3xl font-black text-cyan-400">0.0%</div>
+        </div>
+        <div class="h-8 w-px bg-slate-700/60"></div>
+        <div>
+          <div class="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-bold">Kills</div>
+          <div id="player-kills" class="text-xl sm:text-2xl font-bold text-slate-200">0</div>
+        </div>
+        <div class="h-8 w-px bg-slate-700/60"></div>
+        <div>
+          <div class="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-bold">Speed Boost</div>
+          <div id="speed-status" class="text-xs font-bold text-emerald-400">READY [Space/Tap]</div>
+        </div>
+      </div>
+
+      <!-- High Score & Leaderboard Container -->
+      <div class="flex flex-col gap-2 items-end">
+        <!-- High Score Panel -->
+        <div class="glass-panel px-4 py-2 rounded-2xl border-r-4 border-amber-400 text-right pointer-events-auto">
+          <div class="text-[10px] uppercase tracking-wider text-amber-400 font-extrabold flex items-center justify-end gap-1">
+            <span>🏆</span> HIGH SCORE
+          </div>
+          <div id="high-score-display" class="text-lg font-black text-white">0% (0 Kills)</div>
+        </div>
+
+        <!-- Leaderboard -->
+        <div class="glass-panel p-3 sm:p-4 rounded-2xl w-44 sm:w-56 pointer-events-auto">
+          <h3 class="text-[10px] sm:text-xs uppercase tracking-wider text-slate-400 font-bold mb-2 pb-1 border-b border-slate-700/60 flex justify-between items-center">
+            <span>Leaderboard</span>
+            <span id="room-code-badge" class="text-[9px] text-cyan-400 bg-cyan-950 px-1.5 py-0.5 rounded hidden">OFFLINE</span>
+          </h3>
+          <div id="leaderboard-list" class="space-y-1.5 text-xs font-semibold">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <div class="flex justify-between items-end w-full">
+      <!-- Controls hint -->
+      <div class="glass-panel px-4 py-2.5 rounded-xl text-xs text-slate-300 flex items-center gap-2 pointer-events-auto">
+        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+        <span id="controls-hint">P1: WASD | P2: Arrows | P3: IJKL | P4: TFGH</span>
+      </div>
+
+      <!-- Mini-map -->
+      <div class="glass-panel p-2 rounded-2xl flex flex-col items-center pointer-events-auto">
+        <canvas id="minimap" width="120" height="120" class="rounded-xl bg-slate-950 border border-slate-700/60"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Start Screen -->
+  <div id="start-screen" class="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div class="glass-panel max-w-lg w-full p-6 sm:p-8 rounded-3xl text-center border border-slate-700/60 relative overflow-hidden max-h-[95vh] overflow-y-auto">
+      <div class="inline-block px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 rounded-full text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">
+        3D Territory Conquest
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-black tracking-tight text-white mb-1 glow-text">SLITHER & CLAIM</h1>
+      <p class="text-xs sm:text-sm text-slate-400 mb-4">Conquer ground, grow your tail every 10%, and eliminate all opponents to win!</p>
+
+      <!-- Global High Score Banner -->
+      <div class="bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 border border-amber-500/30 rounded-2xl p-3 mb-5">
+        <div class="text-xs uppercase font-extrabold text-amber-400 tracking-wider mb-0.5">🏆 ALL-TIME HIGH SCORE 🏆</div>
+        <div id="menu-high-score" class="text-xl font-black text-amber-300">0.0% Territory • 0 Kills</div>
+        <div id="menu-high-score-holder" class="text-[10px] text-slate-400">Held by: None</div>
+      </div>
+
+      <!-- Mode Selector -->
+      <div class="mb-4">
+        <label class="block text-xs font-semibold uppercase text-slate-400 mb-2">Game Mode</label>
+        <div class="grid grid-cols-2 gap-2 max-w-xs mx-auto">
+          <button id="mode-local-btn" onclick="setMode('local')" class="py-2 px-3 rounded-xl border-2 font-bold text-xs transition-all bg-cyan-500/20 border-cyan-400 text-white">
+            🎮 Local (1-4 Players)
+          </button>
+          <button id="mode-online-btn" onclick="setMode('online')" class="py-2 px-3 rounded-xl border-2 font-bold text-xs transition-all bg-slate-800/40 border-transparent text-slate-400 hover:text-white">
+            🌐 Online Multiplayer
+          </button>
+        </div>
+      </div>
+
+      <!-- Player Count Selection (Local Mode) -->
+      <div id="player-count-container" class="mb-4">
+        <label class="block text-xs font-semibold uppercase text-slate-400 mb-2">Number of Human Players</label>
+        <div class="flex justify-center gap-2">
+          <button onclick="setPlayerCount(1)" class="p-btn w-10 h-10 rounded-xl font-black text-sm border-2 border-cyan-400 bg-cyan-500/20">1</button>
+          <button onclick="setPlayerCount(2)" class="p-btn w-10 h-10 rounded-xl font-black text-sm border-2 border-slate-700 bg-slate-800/40">2</button>
+          <button onclick="setPlayerCount(3)" class="p-btn w-10 h-10 rounded-xl font-black text-sm border-2 border-slate-700 bg-slate-800/40">3</button>
+          <button onclick="setPlayerCount(4)" class="p-btn w-10 h-10 rounded-xl font-black text-sm border-2 border-slate-700 bg-slate-800/40">4</button>
+        </div>
+      </div>
+
+      <!-- Online Room Settings (Online Mode) -->
+      <div id="online-container" class="mb-4 hidden">
+        <div class="flex flex-col gap-2 max-w-xs mx-auto">
+          <div class="flex gap-2">
+            <button onclick="createOnlineRoom()" class="flex-1 py-2 bg-indigo-600/40 border border-indigo-500/40 hover:bg-indigo-600/60 rounded-xl font-bold text-xs">
+              Host New Room
+            </button>
+          </div>
+          <div class="flex gap-2">
+            <input id="room-input" type="text" placeholder="Enter Room Code" class="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-center uppercase tracking-wider font-mono uppercase focus:outline-none focus:border-cyan-400" />
+            <button onclick="joinOnlineRoom()" class="px-4 py-2 bg-emerald-600/40 border border-emerald-500/40 hover:bg-emerald-600/60 rounded-xl font-bold text-xs">
+              Join
+            </button>
+          </div>
+          <div id="net-status" class="text-[11px] text-slate-400 font-mono mt-1">Ready to host or join...</div>
+        </div>
+      </div>
+
+      <!-- Skin Selector -->
+      <div class="mb-5">
+        <label class="block text-xs font-semibold uppercase text-slate-400 mb-2">Player 1 Skin</label>
+        <div id="color-picker" class="flex justify-center gap-3">
+          <!-- Generated JS -->
+        </div>
+      </div>
+
+      <button id="start-btn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 font-extrabold text-base text-white shadow-lg shadow-cyan-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer">
+        START GAME
+      </button>
+    </div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="gameover-screen" class="absolute inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md hidden">
+    <div class="glass-panel max-w-md w-full p-8 rounded-3xl text-center border border-slate-700/60 relative">
+      <div id="gameover-title-bg" class="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl font-black bg-rose-500/20 text-rose-400 border border-rose-500/30">
+        💀
+      </div>
+      <h2 id="gameover-title" class="text-3xl font-black text-white mb-1">GAME OVER!</h2>
+      <p id="gameover-subtitle" class="text-sm text-slate-400 mb-4">Your trail was cut by an opponent.</p>
+
+      <!-- New High Score Alert -->
+      <div id="new-highscore-badge" class="hidden mb-4 py-2 px-4 bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-black rounded-xl animate-bounce">
+        🎉 NEW HIGH SCORE RECORD! 🎉
+      </div>
+
+      <!-- Match Stats -->
+      <div class="grid grid-cols-2 gap-3 mb-6 text-left">
+        <div class="bg-slate-800/50 p-3.5 rounded-xl border border-slate-700/40">
+          <div class="text-xs text-slate-400">Peak Territory</div>
+          <div id="stat-territory" class="text-2xl font-bold text-cyan-400">0%</div>
+        </div>
+        <div class="bg-slate-800/50 p-3.5 rounded-xl border border-slate-700/40">
+          <div class="text-xs text-slate-400">Snakes Destroyed</div>
+          <div id="stat-kills" class="text-2xl font-bold text-emerald-400">0</div>
+        </div>
+      </div>
+
+      <button id="restart-btn" class="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 font-extrabold text-lg text-white shadow-lg shadow-cyan-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer">
+        PLAY AGAIN
+      </button>
+    </div>
+  </div>
+
+  <!-- Audio Synth Engine -->
+  <script>
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playTone(freq, type, duration, startVol = 0.1, endVol = 0) {
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          gain.gain.setValueAtTime(startVol, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(Math.max(endVol, 0.0001), this.ctx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch (e) {}
+      }
+
+      playCaptureSound() {
+        if (!this.ctx) return;
+        const notes = [261.63, 329.63, 392.00, 523.25];
+        notes.forEach((freq, idx) => {
+          setTimeout(() => {
+            this.playTone(freq, 'sine', 0.15, 0.15, 0.001);
+          }, idx * 45);
+        });
+      }
+
+      playVictorySound() {
+        if (!this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+        notes.forEach((freq, idx) => {
+          setTimeout(() => {
+            this.playTone(freq, 'triangle', 0.3, 0.2, 0.001);
+          }, idx * 80);
+        });
+      }
+
+      playEliminateSound() {
+        if (!this.ctx) return;
+        this.playTone(180, 'sawtooth', 0.2, 0.25, 0.001);
+        setTimeout(() => this.playTone(320, 'triangle', 0.2, 0.2, 0.001), 80);
+      }
+
+      playDeathSound() {
+        if (!this.ctx) return;
+        this.playTone(300, 'sawtooth', 0.2, 0.2, 0.01);
+        setTimeout(() => this.playTone(180, 'square', 0.3, 0.25, 0.01), 100);
+        setTimeout(() => this.playTone(90, 'sawtooth', 0.5, 0.3, 0.01), 220);
+      }
+    }
+
+    const soundFX = new SoundEngine();
+  </script>
+
+  <!-- Main Game & Networking Logic -->
+  <script>
+    const GRID_SIZE = 80;
+    const TILE_SCALE = 1.2;
+    const WORLD_SIZE = GRID_SIZE * TILE_SCALE;
+    const HALF_WORLD = WORLD_SIZE / 2;
+
+    const COLORS = [
+      { name: "Cyan", hex: 0x06b6d4, css: "#06b6d4" },
+      { name: "Magenta", hex: 0xf43f5e, css: "#f43f5e" },
+      { name: "Emerald", hex: 0x10b981, css: "#10b981" },
+      { name: "Gold", hex: 0xf59e0b, css: "#f59e0b" },
+      { name: "Purple", hex: 0x8b5cf6, css: "#8b5cf6" }
+    ];
+
+    let scene, camera, renderer;
+    let gridMesh, gridTexture, gridCanvas, gridCtx;
+    let gridData = new Int8Array(GRID_SIZE * GRID_SIZE);
+    
+    let players = [];
+    let playerIndex = 0;
+    let numHumanPlayers = 1;
+    let gameMode = 'local';
+    let isPlaying = false;
+    let keyStates = {};
+    let pointerDown = false;
+    let particles = [];
+
+    // PeerJS Networking Variables
+    let peer = null;
+    let connections = [];
+    let hostConn = null;
+    let isHost = false;
+    let roomCode = null;
+
+    // High Score Data Storage
+    let highScore = {
+      percent: parseFloat(localStorage.getItem('snake_high_percent') || '0.0'),
+      kills: parseInt(localStorage.getItem('snake_high_kills') || '0'),
+      holder: localStorage.getItem('snake_high_holder') || 'None'
+    };
+
+    function updateHighScoreDisplay() {
+      const text = `${highScore.percent.toFixed(1)}% (${highScore.kills} Kills)`;
+      document.getElementById('high-score-display').textContent = text;
+      document.getElementById('menu-high-score').textContent = `${highScore.percent.toFixed(1)}% Territory • ${highScore.kills} Kills`;
+      document.getElementById('menu-high-score-holder').textContent = `Held by: ${highScore.holder}`;
+    }
+
+    function checkAndSaveHighScore(player) {
+      const currentScoreWeight = player.peakPercent * 10 + player.kills * 5;
+      const prevScoreWeight = highScore.percent * 10 + highScore.kills * 5;
+
+      if (currentScoreWeight > prevScoreWeight) {
+        highScore.percent = player.peakPercent;
+        highScore.kills = player.kills;
+        highScore.holder = player.name;
+        localStorage.setItem('snake_high_percent', highScore.percent.toString());
+        localStorage.setItem('snake_high_kills', highScore.kills.toString());
+        localStorage.setItem('snake_high_holder', highScore.holder);
+        updateHighScoreDisplay();
+        return true;
+      }
+      return false;
+    }
+
+    let selectedColorIdx = 0;
+    const colorPickerEl = document.getElementById('color-picker');
+    COLORS.forEach((col, idx) => {
+      const btn = document.createElement('button');
+      btn.className = `w-10 h-10 rounded-full border-2 transition-all cursor-pointer ${idx === 0 ? 'border-white scale-110' : 'border-transparent opacity-70 hover:opacity-100'}`;
+      btn.style.backgroundColor = col.css;
+      btn.onclick = () => {
+        selectedColorIdx = idx;
+        Array.from(colorPickerEl.children).forEach((c, i) => {
+          c.className = `w-10 h-10 rounded-full border-2 transition-all cursor-pointer ${i === idx ? 'border-white scale-110' : 'border-transparent opacity-70 hover:opacity-100'}`;
+        });
+        updateFaviconColor(col.css);
+      };
+      colorPickerEl.appendChild(btn);
+    });
+
+    function updateFaviconColor(hexCss) {
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23030712'/><path d='M25,75 Q25,35 50,35 T75,25' fill='none' stroke='${encodeURIComponent(hexCss)}' stroke-width='16' stroke-linecap='round'/><circle cx='75' cy='25' r='12' fill='${encodeURIComponent(hexCss)}'/><circle cx='80' cy='22' r='3' fill='%23ffffff'/><circle cx='72' cy='20' r='3' fill='%23ffffff'/></svg>`;
+      document.getElementById('favicon').href = `data:image/svg+xml,${svg}`;
+    }
+
+    function setMode(mode) {
+      gameMode = mode;
+      const localBtn = document.getElementById('mode-local-btn');
+      const onlineBtn = document.getElementById('mode-online-btn');
+      const pContainer = document.getElementById('player-count-container');
+      const oContainer = document.getElementById('online-container');
+
+      if (mode === 'local') {
+        localBtn.className = "py-2 px-3 rounded-xl border-2 font-bold text-xs transition-all bg-cyan-500/20 border-cyan-400 text-white";
+        onlineBtn.className = "py-2 px-3 rounded-xl border-2 font-bold text-xs transition-all bg-slate-800/40 border-transparent text-slate-400 hover:text-white";
+        pContainer.classList.remove('hidden');
+        oContainer.classList.add('hidden');
+      } else {
+        onlineBtn.className = "py-2 px-3 rounded-xl border-2 font-bold text-xs transition-all bg-cyan-500/20 border-cyan-400 text-white";
+        localBtn.className = "py-2 px-3 rounded-xl border-2 font-bold text-xs transition-all bg-slate-800/40 border-transparent text-slate-400 hover:text-white";
+        pContainer.classList.add('hidden');
+        oContainer.classList.remove('hidden');
+        initPeerJS();
+      }
+    }
+
+    function setPlayerCount(count) {
+      numHumanPlayers = count;
+      const buttons = document.querySelectorAll('.p-btn');
+      buttons.forEach((btn, idx) => {
+        if (idx + 1 === count) {
+          btn.className = "p-btn w-10 h-10 rounded-xl font-black text-sm border-2 border-cyan-400 bg-cyan-500/20 text-white";
+        } else {
+          btn.className = "p-btn w-10 h-10 rounded-xl font-black text-sm border-2 border-slate-700 bg-slate-800/40 text-slate-400";
+        }
+      });
+
+      const hints = [
+        "P1: WASD / Mouse / Touch",
+        "P1: WASD | P2: Arrow Keys",
+        "P1: WASD | P2: Arrows | P3: IJKL",
+        "P1: WASD | P2: Arrows | P3: IJKL | P4: TFGH"
+      ];
+      document.getElementById('controls-hint').textContent = hints[count - 1];
+    }
+
+    function initPeerJS() {
+      if (peer) return;
+      document.getElementById('net-status').textContent = "Connecting to matchmaking server...";
+      peer = new Peer();
+      peer.on('open', id => {
+        document.getElementById('net-status').textContent = `Online ID Ready`;
+      });
+      peer.on('connection', conn => {
+        connections.push(conn);
+        conn.on('data', data => handleNetworkData(data, conn));
+      });
+    }
+
+    function createOnlineRoom() {
+      if (!peer || !peer.id) return;
+      isHost = true;
+      roomCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+      document.getElementById('net-status').textContent = `Room Created! Share Code: ${roomCode}`;
+      document.getElementById('room-input').value = roomCode;
+      peer.destroy();
+      peer = new Peer(`SLITHER-${roomCode}`);
+      peer.on('open', () => {
+        document.getElementById('net-status').textContent = `ROOM CODE: ${roomCode} (Waiting for players...)`;
+      });
+      peer.on('connection', conn => {
+        connections.push(conn);
+        conn.on('data', data => handleNetworkData(data, conn));
+      });
+    }
+
+    function joinOnlineRoom() {
+      const code = document.getElementById('room-input').value.trim().toUpperCase();
+      if (!code || !peer) return;
+      isHost = false;
+      document.getElementById('net-status').textContent = `Connecting to ${code}...`;
+      hostConn = peer.connect(`SLITHER-${code}`);
+      hostConn.on('open', () => {
+        document.getElementById('net-status').textContent = `Connected to Room ${code}! Ready to start.`;
+        hostConn.send({ type: 'JOIN_REQ', skin: selectedColorIdx });
+      });
+      hostConn.on('data', data => handleNetworkData(data, hostConn));
+    }
+
+    function handleNetworkData(data, conn) {
+      if (data.type === 'INPUT') {
+        if (isHost && players[data.playerIdx]) {
+          players[data.playerIdx].targetDir.set(data.dirX, data.dirZ).normalize();
+          players[data.playerIdx].isBoosting = data.boosting;
+        }
+      } else if (data.type === 'START_GAME') {
+        playerIndex = data.assignedIdx;
+        startNewGame(true);
+      }
+    }
+
+    function toGridX(worldX) { return Math.floor((worldX + HALF_WORLD) / TILE_SCALE); }
+    function toGridZ(worldZ) { return Math.floor((worldZ + HALF_WORLD) / TILE_SCALE); }
+    function toWorldX(gx) { return (gx + 0.5) * TILE_SCALE - HALF_WORLD; }
+    function toWorldZ(gz) { return (gz + 0.5) * TILE_SCALE - HALF_WORLD; }
+    function getTileIndex(gx, gz) {
+      if (gx < 0 || gx >= GRID_SIZE || gz < 0 || gz >= GRID_SIZE) return -1;
+      return gz * GRID_SIZE + gx;
+    }
+
+    function initThree() {
+      const container = document.getElementById('canvas-container');
+      const canvas = document.getElementById('game-canvas');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x030712);
+      scene.fog = new THREE.FogExp2(0x030712, 0.009);
+
+      camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 400);
+      
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+      
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+      
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+      const ambientLight = new THREE.AmbientLight(0x1e293b, 1.2);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+      dirLight.position.set(50, 100, 50);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 10;
+      dirLight.shadow.camera.far = 250;
+      const d = 70;
+      dirLight.shadow.camera.left = -d;
+      dirLight.shadow.camera.right = d;
+      dirLight.shadow.camera.top = d;
+      dirLight.shadow.camera.bottom = -d;
+      scene.add(dirLight);
+
+      gridCanvas = document.createElement('canvas');
+      gridCanvas.width = GRID_SIZE * 4;
+      gridCanvas.height = GRID_SIZE * 4;
+      gridCtx = gridCanvas.getContext('2d');
+      gridCtx.imageSmoothingEnabled = false;
+
+      gridTexture = new THREE.CanvasTexture(gridCanvas);
+      gridTexture.magFilter = THREE.NearestFilter;
+      gridTexture.minFilter = THREE.NearestFilter;
+
+      const groundGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE);
+      const groundMat = new THREE.MeshStandardMaterial({
+        map: gridTexture,
+        roughness: 0.25,
+        metalness: 0.2,
+      });
+
+      gridMesh = new THREE.Mesh(groundGeo, groundMat);
+      gridMesh.rotation.x = -Math.PI / 2;
+      gridMesh.receiveShadow = true;
+      scene.add(gridMesh);
+
+      // 3D Elevated glowing perimeter walls
+      const wallMat = new THREE.MeshStandardMaterial({ 
+        color: 0x0f172a, 
+        roughness: 0.1, 
+        metalness: 0.5,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 0.15
+      });
+      const wallHeight = 2.5;
+      const wallThick = 2;
+
+      const wallPositions = [
+        [0, wallHeight/2, HALF_WORLD + wallThick/2, WORLD_SIZE + wallThick * 2, wallHeight, wallThick],
+        [0, wallHeight/2, -HALF_WORLD - wallThick/2, WORLD_SIZE + wallThick * 2, wallHeight, wallThick],
+        [HALF_WORLD + wallThick/2, wallHeight/2, 0, wallThick, wallHeight, WORLD_SIZE],
+        [-HALF_WORLD - wallThick/2, wallHeight/2, 0, wallThick, wallHeight, WORLD_SIZE]
+      ];
+
+      wallPositions.forEach(p => {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(p[3], p[4], p[5]), wallMat);
+        wall.position.set(p[0], p[1], p[2]);
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        scene.add(wall);
+      });
+
+      window.addEventListener('resize', onWindowResize, false);
+      onWindowResize();
+    }
+
+    function onWindowResize() {
+      if (!renderer || !camera) return;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setSize(w, h, false);
+    }
+
+    class SnakeEntity {
+      constructor(id, name, colorConfig, isAI = false) {
+        this.id = id;
+        this.name = name;
+        this.color = colorConfig;
+        this.isAI = isAI;
+        this.alive = true;
+        this.kills = 0;
+        this.peakPercent = 0;
+        this.currentPercent = 0;
+
+        this.x = 0;
+        this.z = 0;
+        this.dir = new THREE.Vector2(0, -1);
+        this.targetDir = new THREE.Vector2(0, -1);
+        this.baseSpeed = 12.0;
+        this.speed = this.baseSpeed;
+        this.isBoosting = false;
+
+        this.trail = [];
+        this.trailSet = new Set();
+        this.trailMesh = null;
+        this.trailGeom = null;
+
+        // Snake Body Segments & Lighting
+        this.bodySegments = [];
+        this.history = [];
+        this.segmentSpacing = 0.55;
+
+        this.aiTurnTimer = 0;
+        this.aiState = 'roam';
+
+        this.group = new THREE.Group();
+        
+        // --- REALISTIC SHORT-SNOUTED SNAKE HEAD WITH BEADY BLACK EYES ---
+        const headMat = new THREE.MeshStandardMaterial({
+          color: this.color.hex,
+          roughness: 0.25,
+          metalness: 0.35,
+          emissive: this.color.hex,
+          emissiveIntensity: 0.2
+        });
+
+        // Main Snake Cranium
+        const craniumGeo = new THREE.SphereGeometry(0.65, 20, 20);
+        craniumGeo.scale(0.95, 0.8, 1.05);
+        const cranium = new THREE.Mesh(craniumGeo, headMat);
+        cranium.position.set(0, 0.55, -0.05);
+        cranium.castShadow = true;
+        this.group.add(cranium);
+
+        // Short Rounded Snout (Fixed to remove egg/cone look)
+        const snoutGeo = new THREE.SphereGeometry(0.5, 16, 16);
+        snoutGeo.scale(0.85, 0.7, 0.95);
+        const snout = new THREE.Mesh(snoutGeo, headMat);
+        snout.position.set(0, 0.48, 0.42);
+        snout.castShadow = true;
+        this.group.add(snout);
+
+        // Little Black Beady Eyes with White Sclera Ring
+        const eyeBaseGeo = new THREE.SphereGeometry(0.14, 12, 12);
+        const eyeBaseMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 });
+        
+        const pupilGeo = new THREE.SphereGeometry(0.08, 8, 8);
+        const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 }); // Little black beady eyes
+
+        [-0.4, 0.4].forEach(side => {
+          const eyeObj = new THREE.Group();
+          const whiteSclera = new THREE.Mesh(eyeBaseGeo, eyeBaseMat);
+          whiteSclera.scale.set(0.8, 1.0, 1.0);
+          
+          const pupil = new THREE.Mesh(pupilGeo, pupilMat);
+          pupil.position.set(side > 0 ? 0.05 : -0.05, 0.02, 0.08);
+
+          eyeObj.add(whiteSclera);
+          eyeObj.add(pupil);
+          eyeObj.position.set(side, 0.7, 0.28);
+          this.group.add(eyeObj);
+        });
+
+        // Point Light attached to Player Snake for high 3D immersion
+        if (this.id === 0) {
+          this.pointLight = new THREE.PointLight(this.color.hex, 1.5, 15);
+          this.pointLight.position.set(0, 2, 0);
+          this.group.add(this.pointLight);
+        }
+
+        scene.add(this.group);
+        this.initTrailMesh();
+      }
+
+      initTrailMesh() {
+        const material = new THREE.MeshStandardMaterial({
+          color: this.color.hex,
+          emissive: this.color.hex,
+          emissiveIntensity: 0.7,
+          roughness: 0.2,
+          side: THREE.DoubleSide
+        });
+        this.trailGeom = new THREE.BufferGeometry();
+        this.trailMesh = new THREE.Mesh(this.trailGeom, material);
+        this.trailMesh.castShadow = true;
+        scene.add(this.trailMesh);
+      }
+
+      spawn(gx, gz) {
+        this.x = toWorldX(gx);
+        this.z = toWorldZ(gz);
+        this.group.position.set(this.x, 0, this.z);
+        this.trail = [];
+        this.trailSet.clear();
+        this.updateTrailMesh();
+
+        this.history = [];
+        for (let i = 0; i < 200; i++) {
+          this.history.push({ x: this.x, z: this.z });
+        }
+
+        for (let dx = -2; dx <= 2; dx++) {
+          for (let dz = -2; dz <= 2; dz++) {
+            const idx = getTileIndex(gx + dx, gz + dz);
+            if (idx !== -1) gridData[idx] = this.id;
+          }
+        }
+        
+        // Give snake 4 initial starting body segments right when spawning
+        this.currentPercent = 15; 
+        this.updateSnakeBody();
+        updateGridTexture();
+      }
+
+      updateSnakeBody() {
+        // 3 articulated body spheres for every 10% territory gained (plus base starting segments)
+        const targetCount = Math.max(4, Math.floor(this.currentPercent / 10) * 3);
+
+        while (this.bodySegments.length < targetCount) {
+          const segGeo = new THREE.SphereGeometry(0.62, 16, 16);
+          const segMat = new THREE.MeshStandardMaterial({
+            color: this.color.hex,
+            roughness: 0.25,
+            metalness: 0.3,
+            emissive: this.color.hex,
+            emissiveIntensity: 0.15
+          });
+          const segMesh = new THREE.Mesh(segGeo, segMat);
+          segMesh.position.y = 0.6;
+          segMesh.castShadow = true;
+          scene.add(segMesh);
+          this.bodySegments.push(segMesh);
+        }
+
+        while (this.bodySegments.length > targetCount) {
+          const seg = this.bodySegments.pop();
+          scene.remove(seg);
+        }
+
+        this.history.unshift({ x: this.x, z: this.z });
+
+        const maxHistoryNeeded = Math.max(50, Math.ceil((this.bodySegments.length + 2) * (this.segmentSpacing / 0.1)));
+        if (this.history.length > maxHistoryNeeded) {
+          this.history.pop();
+        }
+
+        for (let i = 0; i < this.bodySegments.length; i++) {
+          const targetDist = (i + 1) * this.segmentSpacing;
+          let accumulated = 0;
+          let pos = { x: this.x, z: this.z };
+
+          for (let j = 0; j < this.history.length - 1; j++) {
+            const p1 = this.history[j];
+            const p2 = this.history[j + 1];
+            const d = Math.hypot(p2.x - p1.x, p2.z - p1.z);
+
+            if (accumulated + d >= targetDist) {
+              const t = (targetDist - accumulated) / (d || 1);
+              pos = {
+                x: THREE.MathUtils.lerp(p1.x, p2.x, t),
+                z: THREE.MathUtils.lerp(p1.z, p2.z, t)
+              };
+              break;
+            }
+            accumulated += d;
+          }
+
+          // Gradual taper towards tail tip for realistic depth
+          const scale = Math.max(0.35, 1.0 - (i / (this.bodySegments.length + 4)) * 0.6);
+          this.bodySegments[i].scale.setScalar(scale);
+          this.bodySegments[i].position.set(pos.x, 0.6 * scale, pos.z);
+        }
+      }
+
+      update(delta) {
+        if (!this.alive) return;
+
+        this.speed = this.isBoosting ? this.baseSpeed * 1.75 : this.baseSpeed;
+        this.dir.lerp(this.targetDir, delta * 14).normalize();
+
+        if (this.isAI) {
+          this.updateAI(delta);
+        }
+
+        const nextX = this.x + this.dir.x * this.speed * delta;
+        const nextZ = this.z + this.dir.y * this.speed * delta;
+
+        const maxCoord = HALF_WORLD - 1;
+        this.x = THREE.MathUtils.clamp(nextX, -maxCoord, maxCoord);
+        this.z = THREE.MathUtils.clamp(nextZ, -maxCoord, maxCoord);
+
+        this.group.position.set(this.x, 0, this.z);
+        this.group.rotation.y = Math.atan2(this.dir.x, this.dir.y);
+
+        this.updateSnakeBody();
+
+        const currentGX = toGridX(this.x);
+        const currentGZ = toGridZ(this.z);
+        const tileIdx = getTileIndex(currentGX, currentGZ);
+
+        if (tileIdx !== -1) {
+          const owner = gridData[tileIdx];
+
+          if (owner !== this.id) {
+            const key = `${currentGX},${currentGZ}`;
+            if (!this.trailSet.has(key)) {
+              if (this.trailSet.size > 3 && this.checkSelfTrailCollision(currentGX, currentGZ)) {
+                this.die("Self collision with active trail!");
+                return;
+              }
+              this.trail.push({ gx: currentGX, gz: currentGZ, x: this.x, z: this.z });
+              this.trailSet.add(key);
+              this.updateTrailMesh();
+            }
+          } else if (this.trail.length > 0) {
+            this.captureTerritory();
+          }
+        }
+
+        this.checkTrailCutCollisions();
+      }
+
+      checkSelfTrailCollision(gx, gz) {
+        for (let i = 0; i < this.trail.length - 2; i++) {
+          if (this.trail[i].gx === gx && this.trail[i].gz === gz) return true;
+        }
+        return false;
+      }
+
+      checkTrailCutCollisions() {
+        const curGX = toGridX(this.x);
+        const curGZ = toGridZ(this.z);
+
+        players.forEach(other => {
+          if (!other.alive || other.trail.length === 0 || other.id === this.id) return;
+
+          for (let i = 0; i < other.trail.length; i++) {
+            const t = other.trail[i];
+            if (t.gx === curGX && t.gz === curGZ) {
+              spawnExplosion(other.x, other.z, other.color.hex);
+              soundFX.playEliminateSound();
+              this.kills++;
+              other.die(`Sliced by ${this.name}!`);
+              break;
+            }
+          }
+        });
+      }
+
+      updateTrailMesh() {
+        if (this.trail.length < 2) {
+          this.trailGeom.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+          return;
+        }
+
+        const positions = [];
+        const width = 0.55;
+
+        for (let i = 0; i < this.trail.length; i++) {
+          const curr = this.trail[i];
+          const prev = this.trail[Math.max(0, i - 1)];
+          const next = this.trail[Math.min(this.trail.length - 1, i + 1)];
+
+          let dx = next.x - prev.x;
+          let dz = next.z - prev.z;
+          if (dx === 0 && dz === 0) { dx = 1; dz = 0; }
+          const len = Math.hypot(dx, dz) || 1;
+          const nx = (-dz / len) * width;
+          const nz = (dx / len) * width;
+
+          positions.push(curr.x + nx, 0.3, curr.z + nz);
+          positions.push(curr.x - nx, 0.3, curr.z - nz);
+        }
+
+        const indices = [];
+        for (let i = 0; i < this.trail.length - 1; i++) {
+          const base = i * 2;
+          indices.push(base, base + 1, base + 2);
+          indices.push(base + 1, base + 3, base + 2);
+        }
+
+        this.trailGeom.setIndex(indices);
+        this.trailGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        this.trailGeom.computeVertexNormals();
+        this.trailGeom.attributes.position.needsUpdate = true;
+      }
+
+      captureTerritory() {
+        if (this.trail.length === 0) return;
+
+        this.trail.forEach(t => {
+          const idx = getTileIndex(t.gx, t.gz);
+          if (idx !== -1) gridData[idx] = this.id;
+        });
+
+        let minX = GRID_SIZE, maxX = 0, minZ = GRID_SIZE, maxZ = 0;
+        for (let gz = 0; gz < GRID_SIZE; gz++) {
+          for (let gx = 0; gx < GRID_SIZE; gx++) {
+            if (gridData[getTileIndex(gx, gz)] === this.id) {
+              minX = Math.min(minX, gx);
+              maxX = Math.max(maxX, gx);
+              minZ = Math.min(minZ, gz);
+              maxZ = Math.max(maxZ, gz);
+            }
+          }
+        }
+
+        minX = Math.max(0, minX - 1);
+        maxX = Math.min(GRID_SIZE - 1, maxX + 1);
+        minZ = Math.max(0, minZ - 1);
+        maxZ = Math.min(GRID_SIZE - 1, maxZ + 1);
+
+        const visited = new Uint8Array(GRID_SIZE * GRID_SIZE);
+        const queue = [];
+
+        for (let gx = minX; gx <= maxX; gx++) {
+          queue.push(gx, minZ, gx, maxZ);
+        }
+        for (let gz = minZ; gz <= maxZ; gz++) {
+          queue.push(minX, gz, maxX, gz);
+        }
+
+        while (queue.length > 0) {
+          const gz = queue.pop();
+          const gx = queue.pop();
+          const idx = getTileIndex(gx, gz);
+
+          if (idx === -1 || visited[idx] || gridData[idx] === this.id) continue;
+
+          visited[idx] = 1;
+
+          if (gx > minX) queue.push(gx - 1, gz);
+          if (gx < maxX) queue.push(gx + 1, gz);
+          if (gz > minZ) queue.push(gx, gz - 1);
+          if (gz < maxZ) queue.push(gx, gz + 1);
+        }
+
+        let capturedCount = 0;
+        let newlyCapturedTiles = [];
+
+        for (let gz = minZ; gz <= maxZ; gz++) {
+          for (let gx = minX; gx <= maxX; gx++) {
+            const idx = getTileIndex(gx, gz);
+            if (!visited[idx] && gridData[idx] !== this.id) {
+              gridData[idx] = this.id;
+              capturedCount++;
+              newlyCapturedTiles.push({ gx, gz });
+            }
+          }
+        }
+
+        let totalOwned = 0;
+        for (let i = 0; i < gridData.length; i++) {
+          if (gridData[i] === this.id) totalOwned++;
+        }
+        
+        // 95% Map Takeover: Credit all remaining living enemies to this player's kills
+        if (totalOwned >= (GRID_SIZE * GRID_SIZE) * 0.95) {
+          gridData.fill(this.id);
+          players.forEach(pl => {
+            if (pl.id !== this.id && pl.alive) {
+              spawnExplosion(pl.x, pl.z, pl.color.hex);
+              soundFX.playEliminateSound();
+              this.kills++; // Award kill credit for takeover
+              pl.die("Engulfed by complete territory takeover!");
+            }
+          });
+        }
+
+        // ENEMY ENCLOSURE ELIMINATION CHECK
+        if (capturedCount > 0) {
+          players.forEach(other => {
+            if (!other.alive || other.id === this.id) return;
+
+            const otherGX = toGridX(other.x);
+            const otherGZ = toGridZ(other.z);
+
+            const isTrapped = newlyCapturedTiles.some(t => t.gx === otherGX && t.gz === otherGZ);
+
+            if (isTrapped) {
+              spawnExplosion(other.x, other.z, other.color.hex);
+              soundFX.playEliminateSound();
+              this.kills++; // Award kill credit for trapping
+              other.die(`Trapped inside territory captured by ${this.name}!`);
+            }
+          });
+
+          spawnCaptureParticles(this.x, this.z, this.color.hex);
+          if (this.id === playerIndex) soundFX.playCaptureSound();
+        }
+
+        this.trail = [];
+        this.trailSet.clear();
+        this.updateTrailMesh();
+        updateGridTexture();
+      }
+
+      updateAI(delta) {
+        this.aiTurnTimer -= delta;
+
+        const curGX = toGridX(this.x);
+        const curGZ = toGridZ(this.z);
+        const insideOwn = gridData[getTileIndex(curGX, curGZ)] === this.id;
+
+        if (insideOwn) {
+          this.aiState = 'roam';
+        } else if (this.trail.length > 16) {
+          this.aiState = 'return';
+        }
+
+        if (this.aiTurnTimer <= 0) {
+          this.aiTurnTimer = 0.3 + Math.random() * 0.6;
+
+          let targetAngle = Math.atan2(this.dir.x, this.dir.y);
+
+          if (this.aiState === 'return') {
+            let nearestDist = 9999;
+            let targetX = 0, targetZ = 0;
+            for (let gz = 0; gz < GRID_SIZE; gz += 4) {
+              for (let gx = 0; gx < GRID_SIZE; gx += 4) {
+                if (gridData[getTileIndex(gx, gz)] === this.id) {
+                  const wx = toWorldX(gx);
+                  const wz = toWorldZ(gz);
+                  const dist = Math.hypot(wx - this.x, wz - this.z);
+                  if (dist < nearestDist) {
+                    nearestDist = dist;
+                    targetX = wx;
+                    targetZ = wz;
+                  }
+                }
+              }
+            }
+            targetAngle = Math.atan2(targetX - this.x, targetZ - this.z);
+          } else {
+            targetAngle += (Math.random() - 0.5) * 1.6;
+          }
+
+          const distFromWall = 8;
+          if (Math.abs(this.x) > HALF_WORLD - distFromWall || Math.abs(this.z) > HALF_WORLD - distFromWall) {
+            targetAngle = Math.atan2(-this.x, -this.z);
+          }
+
+          this.targetDir.set(Math.sin(targetAngle), Math.cos(targetAngle)).normalize();
+        }
+      }
+
+      die(reason) {
+        if (!this.alive) return;
+        this.alive = false;
+        scene.remove(this.group);
+        if (this.trailMesh) scene.remove(this.trailMesh);
+        this.bodySegments.forEach(seg => scene.remove(seg));
+        this.bodySegments = [];
+
+        for (let i = 0; i < gridData.length; i++) {
+          if (gridData[i] === this.id) {
+            gridData[i] = -1;
+          }
+        }
+        updateGridTexture();
+
+        if (this.id === playerIndex) {
+          soundFX.playDeathSound();
+          endGame(false, reason);
+        }
+      }
+    }
+
+    function updateGridTexture() {
+      const scale = 4;
+      
+      gridCtx.fillStyle = '#0b1329';
+      gridCtx.fillRect(0, 0, GRID_SIZE * scale, GRID_SIZE * scale);
+
+      gridCtx.strokeStyle = '#1e293b';
+      gridCtx.lineWidth = 0.5;
+      for (let i = 0; i < GRID_SIZE; i++) {
+        gridCtx.beginPath();
+        gridCtx.moveTo(i * scale, 0);
+        gridCtx.lineTo(i * scale, GRID_SIZE * scale);
+        gridCtx.stroke();
+
+        gridCtx.beginPath();
+        gridCtx.moveTo(0, i * scale);
+        gridCtx.lineTo(GRID_SIZE * scale, i * scale);
+        gridCtx.stroke();
+      }
+
+      for (let gz = 0; gz < GRID_SIZE; gz++) {
+        for (let gx = 0; gx < GRID_SIZE; gx++) {
+          const owner = gridData[gz * GRID_SIZE + gx];
+          if (owner !== -1 && players[owner]) {
+            gridCtx.fillStyle = players[owner].color.css;
+            gridCtx.fillRect(gx * scale, gz * scale, scale, scale);
+          }
+        }
+      }
+
+      gridTexture.needsUpdate = true;
+    }
+
+    function spawnExplosion(x, z, hexColor) {
+      const particleCount = 35;
+      const geom = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+      const mat = new THREE.MeshBasicMaterial({ color: hexColor });
+
+      for (let i = 0; i < particleCount; i++) {
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(x, 0.8, z);
+        const vel = new THREE.Vector3(
+          (Math.random() - 0.5) * 20,
+          Math.random() * 16 + 5,
+          (Math.random() - 0.5) * 20
+        );
+        scene.add(mesh);
+        particles.push({ mesh, vel, life: 1.0 });
+      }
+    }
+
+    function spawnCaptureParticles(x, z, hexColor) {
+      const particleCount = 18;
+      const geom = new THREE.SphereGeometry(0.3, 8, 8);
+      const mat = new THREE.MeshBasicMaterial({ color: hexColor });
+
+      for (let i = 0; i < particleCount; i++) {
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(x + (Math.random() - 0.5) * 5, 0.3, z + (Math.random() - 0.5) * 5);
+        const vel = new THREE.Vector3(0, Math.random() * 6 + 3, 0);
+        scene.add(mesh);
+        particles.push({ mesh, vel, life: 0.7 });
+      }
+    }
+
+    function updateParticles(delta) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= delta * 1.8;
+        if (p.life <= 0) {
+          scene.remove(p.mesh);
+          particles.splice(i, 1);
+          continue;
+        }
+        p.vel.y -= 28.0 * delta;
+        p.mesh.position.addScaledVector(p.vel, delta);
+        p.mesh.scale.setScalar(p.life);
+      }
+    }
+
+    function startNewGame(isRemoteTrigger = false) {
+      soundFX.init();
+      gridData.fill(-1);
+
+      players.forEach(p => {
+        scene.remove(p.group);
+        if (p.trailMesh) scene.remove(p.trailMesh);
+        if (p.bodySegments) p.bodySegments.forEach(seg => scene.remove(seg));
+      });
+      players = [];
+
+      const spawns = [
+        [15, 15],
+        [GRID_SIZE - 20, 20],
+        [20, GRID_SIZE - 20],
+        [GRID_SIZE - 20, GRID_SIZE - 20]
+      ];
+
+      for (let i = 0; i < 4; i++) {
+        const isHuman = i < numHumanPlayers;
+        const color = COLORS[(selectedColorIdx + i) % COLORS.length];
+        const name = isHuman ? `Player ${i + 1}` : `Bot ${i + 1}`;
+        const snake = new SnakeEntity(i, name, color, !isHuman);
+        players.push(snake);
+        snake.spawn(spawns[i][0], spawns[i][1]);
+      }
+
+      playerIndex = 0;
+      updateGridTexture();
+
+      document.getElementById('start-screen').classList.add('hidden');
+      document.getElementById('gameover-screen').classList.add('hidden');
+      document.getElementById('hud').classList.remove('hidden');
+
+      isPlaying = true;
+
+      if (isHost && !isRemoteTrigger) {
+        connections.forEach((conn, idx) => {
+          conn.send({ type: 'START_GAME', assignedIdx: idx + 1 });
+        });
+      }
+    }
+
+    function endGame(victory, reason) {
+      isPlaying = false;
+      const p = players[playerIndex];
+
+      const goScreen = document.getElementById('gameover-screen');
+      const titleEl = document.getElementById('gameover-title');
+      const subEl = document.getElementById('gameover-subtitle');
+      const bgEl = document.getElementById('gameover-title-bg');
+      const recordBadge = document.getElementById('new-highscore-badge');
+
+      const isNewRecord = p ? checkAndSaveHighScore(p) : false;
+
+      if (isNewRecord) {
+        recordBadge.classList.remove('hidden');
+      } else {
+        recordBadge.classList.add('hidden');
+      }
+
+      if (victory) {
+        titleEl.textContent = "VICTORY!";
+        subEl.textContent = reason || "All opponents have been eliminated!";
+        bgEl.textContent = "👑";
+        bgEl.className = "w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl font-black bg-amber-500/20 text-amber-400 border border-amber-500/30";
+      } else {
+        titleEl.textContent = "GAME OVER!";
+        subEl.textContent = reason || "Your trail was sliced by an opponent.";
+        bgEl.textContent = "💀";
+        bgEl.className = "w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl font-black bg-rose-500/20 text-rose-400 border border-rose-500/30";
+      }
+
+      document.getElementById('stat-territory').textContent = `${(p ? p.peakPercent : 0).toFixed(1)}%`;
+      document.getElementById('stat-kills').textContent = p ? p.kills : 0;
+
+      goScreen.classList.remove('hidden');
+    }
+
+    window.addEventListener('keydown', e => {
+      keyStates[e.code] = true;
+    });
+    window.addEventListener('keyup', e => {
+      keyStates[e.code] = false;
+    });
+
+    const handlePointerMove = (clientX, clientY) => {
+      if (!isPlaying) return;
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      const dx = clientX - centerX;
+      const dy = clientY - centerY;
+      const p = players[0];
+      if (p && p.alive && Math.hypot(dx, dy) > 15) {
+        p.targetDir.set(dx, dy).normalize();
+      }
+    };
+
+    window.addEventListener('pointerdown', e => {
+      pointerDown = true;
+      handlePointerMove(e.clientX, e.clientY);
+    });
+    window.addEventListener('pointermove', e => {
+      if (pointerDown) handlePointerMove(e.clientX, e.clientY);
+    });
+    window.addEventListener('pointerup', () => { pointerDown = false; });
+
+    function processInputs() {
+      const controlSchemes = [
+        { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', boost: 'Space' },
+        { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', boost: 'Enter' },
+        { up: 'KeyI', down: 'KeyK', left: 'KeyJ', right: 'KeyL', boost: 'KeyO' },
+        { up: 'KeyT', down: 'KeyG', left: 'KeyF', right: 'KeyH', boost: 'KeyY' }
+      ];
+
+      for (let i = 0; i < numHumanPlayers; i++) {
+        const p = players[i];
+        if (!p || !p.alive) continue;
+
+        const ctrl = controlSchemes[i];
+        let inputX = 0, inputZ = 0;
+
+        if (keyStates[ctrl.up]) inputZ -= 1;
+        if (keyStates[ctrl.down]) inputZ += 1;
+        if (keyStates[ctrl.left]) inputX -= 1;
+        if (keyStates[ctrl.right]) inputX += 1;
+
+        p.isBoosting = !!keyStates[ctrl.boost];
+
+        if (inputX !== 0 || inputZ !== 0) {
+          p.targetDir.set(inputX, inputZ).normalize();
+        }
+
+        if (gameMode === 'online' && !isHost && hostConn && i === playerIndex) {
+          hostConn.send({
+            type: 'INPUT',
+            playerIdx: playerIndex,
+            dirX: p.targetDir.x,
+            dirZ: p.targetDir.y,
+            boosting: p.isBoosting
+          });
+        }
+      }
+    }
+
+    function updateHUD() {
+      const totalTiles = GRID_SIZE * GRID_SIZE;
+      const counts = new Array(players.length).fill(0);
+
+      for (let i = 0; i < gridData.length; i++) {
+        const owner = gridData[i];
+        if (owner >= 0 && owner < players.length) {
+          counts[owner]++;
+        }
+      }
+
+      const leaderboardList = document.getElementById('leaderboard-list');
+      leaderboardList.innerHTML = '';
+
+      const stats = players.map((p, idx) => {
+        const pct = (counts[idx] / totalTiles) * 100;
+        p.currentPercent = pct;
+        p.peakPercent = Math.max(p.peakPercent, pct);
+        checkAndSaveHighScore(p);
+        return { player: p, count: counts[idx], percent: pct };
+      });
+
+      stats.sort((a, b) => b.percent - a.percent);
+
+      stats.forEach(item => {
+        const p = item.player;
+        const row = document.createElement('div');
+        row.className = `flex justify-between items-center ${p.alive ? '' : 'opacity-40 line-through'}`;
+        const displayPercent = item.count === totalTiles ? "100.0" : Math.min(item.percent, 99.9).toFixed(1);
+        row.innerHTML = `
+          <div class="flex items-center gap-1.5 truncate">
+            <span class="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style="background-color: ${p.color.css}"></span>
+            <span class="${p.id === playerIndex ? 'font-black text-white' : 'text-slate-300'} truncate">${p.name}</span>
+          </div>
+          <span class="font-bold ${p.id === playerIndex ? 'text-cyan-400' : 'text-slate-400'}">${displayPercent}%</span>
+        `;
+        leaderboardList.appendChild(row);
+      });
+
+      const p = players[playerIndex];
+      if (p) {
+        const playerCount = counts[playerIndex];
+        const displayPercent = playerCount === totalTiles ? "100.0" : Math.min((playerCount / totalTiles * 100), 99.9).toFixed(1);
+        document.getElementById('player-percent').textContent = `${displayPercent}%`;
+        document.getElementById('player-kills').textContent = p.kills;
+
+        if (isPlaying) {
+          const alivePlayers = players.filter(pl => pl.alive);
+          if (alivePlayers.length === 1 && alivePlayers[0].id === playerIndex) {
+            soundFX.playVictorySound();
+            endGame(true, "All opponents have been eliminated!");
+          }
+        }
+      }
+
+      renderMinimap();
+    }
+
+    function renderMinimap() {
+      const canvas = document.getElementById('minimap');
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(gridCanvas, 0, 0, canvas.width, canvas.height);
+
+      players.forEach(p => {
+        if (!p.alive) return;
+        const gx = (toGridX(p.x) / GRID_SIZE) * canvas.width;
+        const gz = (toGridZ(p.z) / GRID_SIZE) * canvas.height;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(gx, gz, p.id === playerIndex ? 3.5 : 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    let lastTime = performance.now();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const now = performance.now();
+      const delta = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+
+      if (isPlaying) {
+        processInputs();
+
+        players.forEach(p => p.update(delta));
+
+        const human = players[playerIndex];
+        if (human && human.alive) {
+          const camOffset = new THREE.Vector3(0, 24, 18);
+          const targetCamPos = new THREE.Vector3(human.x, 0, human.z).add(camOffset);
+          camera.position.lerp(targetCamPos, delta * 6);
+          camera.lookAt(human.x, 0, human.z - 2);
+        }
+
+        updateParticles(delta);
+        updateHUD();
+      } else {
+        const t = now * 0.0002;
+        camera.position.x = Math.sin(t) * 55;
+        camera.position.z = Math.cos(t) * 55;
+        camera.position.y = 40;
+        camera.lookAt(0, 0, 0);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function() {
+      initThree();
+      updateHighScoreDisplay();
+      setPlayerCount(1);
+      animate();
+
+      document.getElementById('start-btn').onclick = () => startNewGame(false);
+      document.getElementById('restart-btn').onclick = () => startNewGame(false);
+    };
+  </script>
+</body>
+</html>
+      animate();
+
+      document.getElementById('start-btn').onclick = () => startNewGame(false);
+      document.getElementById('restart-btn').onclick = () => startNewGame(false);
+    };
+  </script>
+</body>
+</html>
